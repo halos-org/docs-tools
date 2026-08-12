@@ -11,7 +11,9 @@ The English page carries nothing, so an English edit needs no ceremony: editing
 it changes its content, which changes its hash, which makes every translation of
 it report as stale on its own.
 
-Reports; never blocks. Exit status is 0 unless the check itself could not run.
+Reports by default. With --check it also fails: any page that is not current,
+in any configured locale, exits non-zero. That is a property of the repository,
+so the gate ignores --only-pages, which narrows the report and not the rule.
 """
 
 from __future__ import annotations
@@ -208,6 +210,29 @@ def render_markdown(entries: list[Entry], only: set[str] | None) -> str:
     return "\n".join(out)
 
 
+def render_failure(behind: list[Entry]) -> str:
+    """Name every entry the gate is failing on.
+
+    A non-zero exit carrying only a count sends the reader into the job log to
+    find out what to do, and the report above may have been filtered to a
+    subset of pages. This block is the one thing that always lists all of it.
+    """
+    out = [
+        "",
+        f"Translation gate: {len(behind)} of the configured translations are "
+        f"not current.",
+        "",
+    ]
+    for entry in sorted(behind, key=lambda e: (e.state, e.language, e.page)):
+        out.append(f"  {entry.state:9s} {entry.language}/{entry.page}")
+    out += [
+        "",
+        "Translate the pages above, stamp them with stamp-translation, and "
+        "run this check again.",
+    ]
+    return "\n".join(out)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--format", choices=("text", "markdown"), default="text")
@@ -222,6 +247,12 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="restrict the detail section to these docs/<lang>/-relative paths",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="exit non-zero when any translation is stale, missing, unstamped "
+        "or orphaned, across the whole repository",
+    )
     args = parser.parse_args(argv)
 
     default, languages = configured_languages()
@@ -235,6 +266,11 @@ def main(argv: list[str] | None = None) -> int:
         print(render_markdown(entries, only))
     else:
         print(render_text(entries))
+
+    behind = [e for e in entries if e.state != "current"]
+    if args.check and behind:
+        print(render_failure(behind))
+        return 1
     return 0
 
 

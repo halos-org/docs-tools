@@ -72,6 +72,23 @@ its hash, which makes every translation of it report as stale on its own.
 `translation-status` classifies each page in each configured locale as `current`,
 `stale`, `missing`, `unstamped` or `orphaned`.
 
+### Failing a build on it
+
+```
+translation-status --check
+```
+
+exits non-zero when any page in any configured locale is anything but
+`current`, and names every entry responsible. Without `--check` the command
+only reports, whatever it finds.
+
+The gate is a property of the repository, not of a pull request's diff, so
+`--only-pages` narrows the report and never the rule.
+
+One consequence is worth knowing before you meet it: adding a locale to
+`mkdocs.yml` makes every page `missing` in that locale immediately. A new
+locale therefore arrives in a single pull request, together with its pages.
+
 ## Development
 
 ```
