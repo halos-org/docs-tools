@@ -29,6 +29,11 @@ import yaml
 
 DOCS = Path("docs")
 STAMP_KEY = "translated_from"
+# GitHub rejects a comment body over 65536 characters with HTTP 422. A wide
+# change produces a report far beyond that, so the diffs come out below this
+# and the reader is sent to the job summary for them.
+COMMENT_CEILING = 60000
+COMMENT_MARKER = "<!-- translation-status -->"
 
 
 class _Loader(yaml.SafeLoader):
@@ -210,6 +215,28 @@ def render_markdown(entries: list[Entry], only: set[str] | None) -> str:
     return "\n".join(out)
 
 
+def render_comment(entries: list[Entry]) -> str:
+    """The pull request comment body: every entry the gate fails on.
+
+    Scoping this to the pages a pull request touched would let the comment omit
+    the page that turned the check red, because the gate reads the whole
+    repository and a diff does not.
+    """
+    full = render_markdown(entries, None)
+    if len(full) <= COMMENT_CEILING:
+        return f"{full}\n\n{COMMENT_MARKER}\n"
+
+    without_diffs = render_markdown(
+        [Entry(e.language, e.page, e.state, e.expected) for e in entries], None
+    )
+    return (
+        f"{without_diffs}\n\n"
+        "_Diffs omitted: the full report exceeds GitHub's comment size limit._\n"
+        "_See the workflow run's job summary for the complete report._\n"
+        f"\n{COMMENT_MARKER}\n"
+    )
+
+
 def render_failure(behind: list[Entry]) -> str:
     """Name every entry the gate is failing on.
 
@@ -248,6 +275,12 @@ def main(argv: list[str] | None = None) -> int:
         help="restrict the detail section to these docs/<lang>/-relative paths",
     )
     parser.add_argument(
+        "--comment",
+        action="store_true",
+        help="emit a pull request comment body covering every entry the gate "
+        "fails on, size-capped, instead of the report",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="exit non-zero when any translation is stale, missing, unstamped "
@@ -260,8 +293,10 @@ def main(argv: list[str] | None = None) -> int:
         print("No translation languages configured.")
         return 0
 
-    entries = collect(default, languages, want_diff=args.diff)
-    if args.format == "markdown":
+    entries = collect(default, languages, want_diff=args.diff or args.comment)
+    if args.comment:
+        print(render_comment(entries))
+    elif args.format == "markdown":
         only = set(args.only_pages) if args.only_pages else None
         print(render_markdown(entries, only))
     else:

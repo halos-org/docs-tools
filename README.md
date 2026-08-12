@@ -89,6 +89,21 @@ One consequence is worth knowing before you meet it: adding a locale to
 `mkdocs.yml` makes every page `missing` in that locale immediately. A new
 locale therefore arrives in a single pull request, together with its pages.
 
+### The pull request comment
+
+```
+translation-status --comment > body.md
+```
+
+writes a comment body describing every entry the gate fails on, with the
+English changes since each translation was written, collapsed. The command
+writes a body and nothing else; posting it belongs to whatever holds the token.
+
+The body carries a `<!-- translation-status -->` marker so a workflow can find
+and update its own previous comment rather than adding another one. If the body
+would exceed GitHub's 65536-character limit, the diffs come out and the reader
+is pointed at the job summary for them.
+
 ## Development
 
 ```
