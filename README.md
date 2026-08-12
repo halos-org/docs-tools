@@ -12,12 +12,17 @@ Add it to a documentation repository's `pyproject.toml`, pinned to a tag:
 
 ```toml
 dependencies = [
-    "halos-docs-tools @ git+https://github.com/halos-org/docs-tools@v0.1.0",
+    "halos-docs-tools @ git+https://github.com/halos-org/docs-tools@vX.Y.Z",
 ]
 ```
 
+Use a tag from the [releases page](https://github.com/halos-org/docs-tools/releases).
 `uv sync` then puts all six commands on the path. Each repository pins its own
 version; upgrading is a deliberate edit to that pin.
+
+`git` must be on the path. `translation-status`, `stamp-translation` and
+`check-glossary` shell out to it, and it is not something a Python dependency
+can bring.
 
 ## Commands
 
@@ -32,6 +37,16 @@ Run them from the root of a documentation repository — they expect `docs/` and
 | `check-glossary` | verify a translation uses the terms its glossary prescribes |
 | `check-typography` | check quotation pairing and unit spacing per language |
 | `check-anchors` | verify every internal anchor in a built site resolves |
+
+### Exit statuses
+
+A workflow branches on these, so they are part of the interface.
+
+| Status | Meaning |
+|:---|:---|
+| 0 | the check passed |
+| 1 | the check found problems — broken anchors, unused glossary terms, typography faults, or (with `--check`) translations that are not current |
+| 2 | the check could not run: `check-anchors` was given a site directory holding no built pages |
 
 Glossaries and per-language rules stay in the documentation repository. This
 package brings the checkers, not the terminology.

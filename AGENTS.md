@@ -8,7 +8,8 @@ Six documentation checkers, packaged so that a MkDocs documentation repository
 can pin them and get the identical code in CI and on a developer's machine. The
 checkers were extracted from `hatlabs/halpi2`, where they lived as `scripts/`.
 
-Consumers:
+Intended consumers. Neither pins the package yet; both migrations are still
+open, so `hatlabs/halpi2` still runs its own copies under `scripts/`:
 
 - `hatlabs/halpi2` — nine locales, full translation gate
 - `halos-org/docs.halos.fi` — no translations, anchor validation only

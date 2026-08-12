@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 import yaml
@@ -77,12 +78,18 @@ def stamp_of(path: Path) -> str | None:
     return str(value) if value else None
 
 
+@cache
 def english_diff(stamped: str, current: Path) -> str | None:
     """Diff the stamped English blob against the English page as it stands now.
 
     The current page is compared from the working tree rather than as a stored
     object: `git hash-object` computes a hash without writing the object, so
     diffing two hashes would fail on the side that was never stored.
+
+    Cached because the answer is a property of the page and the stamp, not of
+    the locale asking. Nine locales stamped against the same blob would
+    otherwise each pay a `git cat-file`, a `git diff` and a temporary
+    directory for identical output.
     """
     blob = subprocess.run(
         ["git", "cat-file", "-p", stamped],

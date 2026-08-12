@@ -110,7 +110,12 @@ def main(argv: list[str] | None = None) -> int:
         "single-page exports need this",
     )
     args = parser.parse_args(argv)
+    # The same normalisation configured_base() applies. Without it, --base
+    # /halpi2 strips one character too few and every root-absolute link
+    # resolves outside the built tree, reported as breakage that is not there.
     base = args.base if args.base is not None else configured_base()
+    if not base.endswith("/"):
+        base += "/"
 
     ids, excluded = collect_pages(args.site, args.exclude)
     if not ids:
