@@ -36,6 +36,25 @@ Run them from the root of a documentation repository — they expect `docs/` and
 Glossaries and per-language rules stay in the documentation repository. This
 package brings the checkers, not the terminology.
 
+### Generated pages and `check-anchors`
+
+Some plugins generate a page whose internal fragments the checker cannot
+resolve. `mkdocs-print-site-plugin` is one: on `docs.halos.fi` its single-page
+export accounts for 690 broken fragments while the 36 content pages are clean.
+Exclude such pages by path pattern:
+
+```
+check-anchors site --exclude 'print_page/*'
+```
+
+An excluded page contributes no links to the check. Its own headings stay
+linkable, so other pages may still point into it.
+
+`--base`, used to resolve root-absolute links, is read from `site_url` in
+`mkdocs.yml`. A base that does not match the site makes the checker skip every
+root-absolute link and report a pass it did not earn, so override it only when
+you know the built site differs from the configuration.
+
 ## How translation staleness is detected
 
 A translation records the git blob hash of the English page it was written
