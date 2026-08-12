@@ -51,7 +51,9 @@ def configured_base() -> str:
     return path if path.endswith("/") else path + "/"
 
 
-def collect_pages(site: str, exclude: list[str]) -> tuple[dict[str, set[str]], set[str]]:
+def collect_pages(
+    site: str, exclude: list[str]
+) -> tuple[dict[str, set[str]], set[str]]:
     """Map each built page to the ids it defines, and note which are excluded.
 
     An excluded page contributes no links to the check but keeps its ids: it is
@@ -145,7 +147,9 @@ def main(argv: list[str] | None = None) -> int:
                 broken.append((relative, href, "no such anchor on the target page"))
 
     skipped = f", {len(excluded)} excluded" if excluded else ""
-    print(f"Checked {checked} anchor links across {len(ids) - len(excluded)} pages{skipped}.")
+    print(
+        f"Checked {checked} anchor links across {len(ids) - len(excluded)} pages{skipped}."
+    )
     if broken:
         print(f"\n{len(broken)} broken:\n")
         for page, href, why in broken:

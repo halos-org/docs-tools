@@ -74,7 +74,9 @@ def test_unreachable_stamped_blob_omits_the_diff_and_hints(docs_repo: DocsRepo, 
     assert "```diff" not in out
 
 
-def test_diff_shows_the_english_change_since_the_translation(docs_repo: DocsRepo, capsys):
+def test_diff_shows_the_english_change_since_the_translation(
+    docs_repo: DocsRepo, capsys
+):
     docs_repo.commit("docs: seed")
     docs_repo.source("index.md", "# Title\n\nEnglish body, revised.\n")
     assert run("--format", "markdown", "--diff") == 0

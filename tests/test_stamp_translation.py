@@ -15,9 +15,7 @@ def run(*argv: str) -> int:
 def state(repo: DocsRepo, language: str, page: str) -> str:
     default, languages = translation_status.configured_languages()
     entries = translation_status.collect(default, languages, want_diff=False)
-    return next(
-        e.state for e in entries if e.language == language and e.page == page
-    )
+    return next(e.state for e in entries if e.language == language and e.page == page)
 
 
 def test_stamping_a_stale_translation_makes_it_current(docs_repo: DocsRepo):

@@ -43,9 +43,7 @@ def configured_languages() -> tuple[str, list[str]]:
         if isinstance(plugin, dict) and "i18n" in plugin:
             languages = plugin["i18n"]["languages"]
             default = next(lang["locale"] for lang in languages if lang.get("default"))
-            others = [
-                lang["locale"] for lang in languages if not lang.get("default")
-            ]
+            others = [lang["locale"] for lang in languages if not lang.get("default")]
             return default, others
     raise SystemExit("mkdocs.yml has no i18n plugin configuration")
 
@@ -130,9 +128,7 @@ def collect(default: str, languages: list[str], want_diff: bool) -> list[Entry]:
                 entries.append(Entry(language, str(relative), "current", expected))
             else:
                 diff = english_diff(stamped, source) if want_diff else None
-                entries.append(
-                    Entry(language, str(relative), "stale", expected, diff)
-                )
+                entries.append(Entry(language, str(relative), "stale", expected, diff))
 
     # A translation whose source was deleted is invisible to the loop above,
     # because that walks the sources. It is still a page being served.
