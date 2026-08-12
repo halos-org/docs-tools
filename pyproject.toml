@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "halos-docs-tools"
+version = "0.1.0"
+description = "Documentation checkers for HaLOS and Hat Labs MkDocs sites"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Hat Labs Oy", email = "info@hatlabs.fi"}
+]
+keywords = ["mkdocs", "documentation", "translation", "i18n"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Documentation",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+translation-status = "halos_docs_tools.translation_status:main"
+stamp-translation = "halos_docs_tools.stamp_translation:main"
+map-anchors = "halos_docs_tools.map_anchors:main"
+check-glossary = "halos_docs_tools.check_glossary:main"
+check-typography = "halos_docs_tools.check_typography:main"
+check-anchors = "halos_docs_tools.check_anchors:main"
+
+[project.urls]
+Homepage = "https://github.com/halos-org/docs-tools"
+Repository = "https://github.com/halos-org/docs-tools"
+Issues = "https://github.com/halos-org/docs-tools/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
