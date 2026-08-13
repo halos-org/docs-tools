@@ -82,9 +82,16 @@ def resolve(href: str, page: str, site: str, base: str) -> str | None:
     if not target:
         return os.path.realpath(page)
     if target.startswith("/"):
-        if not target.startswith(base):
+        # The base always carries a trailing slash, so a link to the site root
+        # written without one -- /halpi2#section -- fails startswith and would
+        # be skipped as somebody else's. Skipping is the silent pass this
+        # module exists to prevent.
+        if target == base.rstrip("/"):
+            path = site
+        elif not target.startswith(base):
             return None
-        path = os.path.normpath(os.path.join(site, target[len(base) :]))
+        else:
+            path = os.path.normpath(os.path.join(site, target[len(base) :]))
     else:
         path = os.path.normpath(os.path.join(os.path.dirname(page), target))
     if not path.endswith(".html"):

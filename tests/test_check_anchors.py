@@ -136,3 +136,21 @@ def test_excluding_every_page_is_not_a_pass(tmp_path: Path, capsys):
     assert run(str(site), "--exclude", "*") == 2
     assert "every built page is excluded" in capsys.readouterr().err
     assert run(str(site), "--exclude", "*.html") == 2
+
+
+def test_a_root_absolute_link_to_the_site_root_is_checked(docs_repo: DocsRepo, capsys):
+    """`/halpi2#frag` is ours; only `/halpi2/#frag` was recognised as such.
+
+    The base always carries a trailing slash, so the form without one failed
+    startswith and was skipped as somebody else's link -- the silent pass this
+    module's docstring warns about, applied to the site root page.
+    """
+    docs_repo.write(
+        "mkdocs.yml", "site_name: Test\nsite_url: https://example.invalid/halpi2/\n"
+    )
+    site = docs_repo.root / "site"
+    page(site, "index.html", '<h2 id="intro">Intro</h2><a href="/halpi2#nope">go</a>')
+    assert run(str(site)) == 1
+    out = capsys.readouterr().out
+    assert "Checked 1 anchor links" in out
+    assert "no such anchor" in out
