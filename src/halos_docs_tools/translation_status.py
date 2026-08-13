@@ -12,8 +12,13 @@ it changes its content, which changes its hash, which makes every translation of
 it report as stale on its own.
 
 Reports by default. With --check it also fails: any page that is not current,
-in any configured locale, exits non-zero. That is a property of the repository,
-so the gate ignores --only-pages, which narrows the report and not the rule.
+in any configured locale, exits non-zero. --only-pages narrows the report and
+never the rule.
+
+--since REF narrows the rule, and only for stale: it fails on the pages this
+change made stale rather than on every stale page in the repository. Missing,
+unstamped and orphaned stay absolute. Without it, editing one English page
+cannot go green until every translation of it lands in the same change.
 """
 
 from __future__ import annotations
@@ -282,6 +287,53 @@ def render_comment(entries: list[Entry]) -> str:
     )
 
 
+def changed_sources(ref: str, default: str) -> set[str] | None:
+    """English pages differing from `ref`, relative to the language directory.
+
+    None when the diff could not be computed -- an unknown ref, or a clone too
+    shallow to contain it. The caller must not read that as "nothing changed":
+    a gate that forgives every stale page because it could not tell which ones
+    this change touched forgives the whole repository.
+    """
+    root = DOCS / default
+    result = subprocess.run(
+        ["git", "diff", "--name-only", ref, "--", str(root)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    changed = set()
+    for line in result.stdout.splitlines():
+        try:
+            changed.add(str(Path(line).relative_to(root)))
+        except ValueError:
+            continue
+    return changed
+
+
+def render_excused(excused: list[Entry], ref: str) -> str:
+    """Say what the gate passed over, so a green run is not read as a clean one."""
+    pages = sorted({e.page for e in excused})
+    translations = f"{len(excused)} stale translation" + (
+        "s" if len(excused) > 1 else ""
+    )
+    of_pages = f"{len(pages)} page" + ("s" if len(pages) > 1 else "")
+    out = [
+        "",
+        f"{translations} of {of_pages} were already stale at {ref} and were "
+        "not gated on:",
+        "",
+    ]
+    out += [f"  {page}" for page in pages]
+    out += [
+        "",
+        "They are still in the report above, and still block whichever change "
+        "edits their English source next.",
+    ]
+    return "\n".join(out)
+
+
 def render_failure(behind: list[Entry]) -> str:
     """Name every entry the gate is failing on.
 
@@ -331,7 +383,21 @@ def main(argv: list[str] | None = None) -> int:
         help="exit non-zero when any translation is stale, missing, unstamped "
         "or orphaned, across the whole repository",
     )
+    parser.add_argument(
+        "--since",
+        metavar="REF",
+        help="gate on stale translations only for English pages that changed "
+        "since REF. Missing, unstamped and orphaned still fail whatever "
+        "change introduced them",
+    )
     args = parser.parse_args(argv)
+
+    if args.since and not (args.check or args.comment):
+        print(
+            "--since narrows what counts as a gate failure, so it needs "
+            "--check or --comment. The plain report shows everything by design."
+        )
+        return 2
 
     default, languages = configured_languages()
     if not languages:
@@ -341,8 +407,29 @@ def main(argv: list[str] | None = None) -> int:
         return 2 if args.check else 0
 
     entries = collect(default, languages, want_diff=args.diff or args.comment)
+
+    # Resolved before anything is rendered. The comment body is the verdict, so
+    # it has to be built from what the gate will actually fail on -- naming a
+    # page the run passed on sends its author to translate something nobody
+    # asked them for.
+    excused: list[Entry] = []
+    if args.since:
+        changed = changed_sources(args.since, default)
+        if changed is None:
+            print(
+                f"\nCannot diff against '{args.since}'. The gate was asked to "
+                "fail only on what this change made stale, and it cannot tell "
+                "what that is.\n\nCheck the ref exists in this clone -- a "
+                "shallow checkout is the usual cause."
+            )
+            return 2
+        excused = [e for e in entries if e.state == "stale" and e.page not in changed]
+    spared = {(e.language, e.page) for e in excused}
+
     if args.comment:
-        print(render_comment(entries))
+        print(
+            render_comment([e for e in entries if (e.language, e.page) not in spared])
+        )
     elif args.format == "markdown":
         only = set(args.only_pages) if args.only_pages else None
         print(render_markdown(entries, only))
@@ -374,7 +461,17 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
 
-        behind = [e for e in entries if e.state != "current"]
+        behind = [
+            e
+            for e in entries
+            if e.state != "current" and (e.language, e.page) not in spared
+        ]
+
+        # Not in comment mode: there stdout is the comment body, and what the
+        # gate spared belongs in the report rather than in a verdict.
+        if excused and not args.comment:
+            print(render_excused(excused, args.since))
+
         if behind:
             print(render_failure(behind))
             return 1
