@@ -97,8 +97,29 @@ exits non-zero when any page in any configured locale is anything but
 `current`, and names every entry responsible. Without `--check` the command
 only reports, whatever it finds.
 
-The gate is a property of the repository, not of a pull request's diff, so
 `--only-pages` narrows the report and never the rule.
+
+### Gating on the staleness this change caused
+
+```
+translation-status --check --since origin/main
+```
+
+Whole-repository `--check` has a cost that shows up the first time someone
+fixes a typo: editing one English page marks every translation of it stale, so
+the change cannot go green until all of them land in the same pull request. And
+a page somebody left behind last month fails a pull request that touched no
+documentation at all.
+
+`--since REF` gates on `stale` only for English pages whose content differs
+from `REF`. `missing`, `unstamped` and `orphaned` still fail wherever they came
+from — those are structural, and none of them asks an author for translation
+work their change did not create.
+
+What it passed over is printed, so a green run is not mistaken for a clean
+repository. If `REF` does not resolve — an unknown ref, or a clone too shallow
+to hold it — the command exits 2 rather than forgiving everything it could not
+measure.
 
 One consequence is worth knowing before you meet it: adding a locale to
 `mkdocs.yml` makes every page `missing` in that locale immediately. A new

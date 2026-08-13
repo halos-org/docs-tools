@@ -8,11 +8,16 @@ Six documentation checkers, packaged so that a MkDocs documentation repository
 can pin them and get the identical code in CI and on a developer's machine. The
 checkers were extracted from `hatlabs/halpi2`, where they lived as `scripts/`.
 
-Intended consumers. Neither pins the package yet; both migrations are still
-open, so `hatlabs/halpi2` still runs its own copies under `scripts/`:
+Consumers, all pinning a tag:
 
-- `hatlabs/halpi2` — nine locales, full translation gate
-- `halos-org/docs.halos.fi` — no translations, anchor validation only
+- `hatlabs/halpi2`, `hatlabs/halmet`, `hatlabs/sh-rpi` — nine locales each, full
+  translation gate through `halos-org/shared-workflows`
+- `hatlabs/sh-esp32` — one locale, same gate
+- `halos-org/docs` (docs.halos.fi) — no translations, `check-anchors` only,
+  called directly from its own build job
+
+`halos-org/shared-workflows` calls the CLI by name and by flag, so it is a
+consumer too even though it installs nothing: see `translation-status.yml`.
 
 ## The six commands
 
@@ -32,6 +37,12 @@ Each module lives at `src/halos_docs_tools/<name>.py` and exposes `main()`.
   Where a checker needs them, the path is a CLI option with a default.
 - The translation stamp format — `translated_from` in frontmatter, holding a git
   blob hash — is fixed. Consumers have thousands of pages carrying it.
+- `translation-status --check` fails on `missing`, `unstamped` and `orphaned`
+  wherever they came from, and on `stale` only for pages changed since
+  `--since REF` when that is given. The split is deliberate: the first three are
+  structural, while gating every stale page in the repository makes an
+  English-only edit unmergeable until all its translations land in the same
+  change. Do not quietly widen either half.
 
 ## Distribution
 
