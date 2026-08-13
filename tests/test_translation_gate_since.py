@@ -93,7 +93,48 @@ def test_a_ref_that_does_not_resolve_is_not_a_pass(docs_repo: DocsRepo, capsys):
     assert "no-such-ref" in capsys.readouterr().out
 
 
-def test_since_without_check_is_refused(docs_repo: DocsRepo, capsys):
-    # Silently inert would be worse: the caller believes it scoped the gate.
+def test_since_on_a_plain_report_is_refused(docs_repo: DocsRepo, capsys):
+    # The report shows everything by design, so --since would change nothing.
+    # Silently inert is worse: the caller believes it scoped something.
     assert run("--since", "HEAD") == 2
-    assert "--check" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "--check" in out and "--comment" in out
+
+
+def test_the_comment_omits_what_the_gate_excused(docs_repo: DocsRepo, capsys):
+    """The comment body is the verdict, so it must agree with the verdict.
+
+    render_comment covers every entry the gate fails on. Under --since the gate
+    fails on fewer, and a comment naming a page the run passed on sends its
+    author to translate something nobody asked them for.
+    """
+    docs_repo.source("stale-already.md")
+    docs_repo.translation("fi", "stale-already.md")
+    docs_repo.translation("sv", "stale-already.md")
+    docs_repo.source("stale-already.md", "# Title\n\nEdited without translating.\n")
+    base = docs_repo.commit()
+
+    assert run("--comment", "--check", "--since", base) == 0
+    body = capsys.readouterr().out
+    assert "stale-already.md" not in body
+    assert "not gated on" not in body
+
+
+def test_the_comment_can_be_scoped_without_gating(docs_repo: DocsRepo, capsys):
+    """The workflow's comment step wants the scope, not the exit status."""
+    docs_repo.source("stale-already.md")
+    docs_repo.translation("fi", "stale-already.md")
+    docs_repo.translation("sv", "stale-already.md")
+    docs_repo.source("stale-already.md", "# Title\n\nEdited without translating.\n")
+    base = docs_repo.commit()
+
+    assert run("--comment", "--since", base) == 0
+    assert "stale-already.md" not in capsys.readouterr().out
+
+
+def test_the_comment_still_names_what_this_change_broke(docs_repo: DocsRepo, capsys):
+    base = docs_repo.commit()
+    docs_repo.source("index.md", "# Title\n\nEdited in this change.\n")
+
+    assert run("--comment", "--check", "--since", base) == 1
+    assert "index.md" in capsys.readouterr().out

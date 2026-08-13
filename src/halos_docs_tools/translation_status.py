@@ -12,8 +12,13 @@ it changes its content, which changes its hash, which makes every translation of
 it report as stale on its own.
 
 Reports by default. With --check it also fails: any page that is not current,
-in any configured locale, exits non-zero. That is a property of the repository,
-so the gate ignores --only-pages, which narrows the report and not the rule.
+in any configured locale, exits non-zero. --only-pages narrows the report and
+never the rule.
+
+--since REF narrows the rule, and only for stale: it fails on the pages this
+change made stale rather than on every stale page in the repository. Missing,
+unstamped and orphaned stay absolute. Without it, editing one English page
+cannot go green until every translation of it lands in the same change.
 """
 
 from __future__ import annotations
@@ -387,8 +392,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.since and not args.check:
-        print("--since narrows what --check fails on, so it needs --check.")
+    if args.since and not (args.check or args.comment):
+        print(
+            "--since narrows what counts as a gate failure, so it needs "
+            "--check or --comment. The plain report shows everything by design."
+        )
         return 2
 
     default, languages = configured_languages()
@@ -399,8 +407,29 @@ def main(argv: list[str] | None = None) -> int:
         return 2 if args.check else 0
 
     entries = collect(default, languages, want_diff=args.diff or args.comment)
+
+    # Resolved before anything is rendered. The comment body is the verdict, so
+    # it has to be built from what the gate will actually fail on -- naming a
+    # page the run passed on sends its author to translate something nobody
+    # asked them for.
+    excused: list[Entry] = []
+    if args.since:
+        changed = changed_sources(args.since, default)
+        if changed is None:
+            print(
+                f"\nCannot diff against '{args.since}'. The gate was asked to "
+                "fail only on what this change made stale, and it cannot tell "
+                "what that is.\n\nCheck the ref exists in this clone -- a "
+                "shallow checkout is the usual cause."
+            )
+            return 2
+        excused = [e for e in entries if e.state == "stale" and e.page not in changed]
+    spared = {(e.language, e.page) for e in excused}
+
     if args.comment:
-        print(render_comment(entries))
+        print(
+            render_comment([e for e in entries if (e.language, e.page) not in spared])
+        )
     elif args.format == "markdown":
         only = set(args.only_pages) if args.only_pages else None
         print(render_markdown(entries, only))
@@ -432,24 +461,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
 
-        behind = [e for e in entries if e.state != "current"]
+        behind = [
+            e
+            for e in entries
+            if e.state != "current" and (e.language, e.page) not in spared
+        ]
 
-        if args.since:
-            changed = changed_sources(args.since, default)
-            if changed is None:
-                print(
-                    f"\nCannot diff against '{args.since}'. The gate was asked "
-                    "to fail only on what this change made stale, and it "
-                    "cannot tell what that is.\n\nCheck the ref exists in this "
-                    "clone -- a shallow checkout is the usual cause."
-                )
-                return 2
-            excused = [
-                e for e in behind if e.state == "stale" and e.page not in changed
-            ]
-            if excused:
-                print(render_excused(excused, args.since))
-                behind = [e for e in behind if e not in excused]
+        # Not in comment mode: there stdout is the comment body, and what the
+        # gate spared belongs in the report rather than in a verdict.
+        if excused and not args.comment:
+            print(render_excused(excused, args.since))
 
         if behind:
             print(render_failure(behind))

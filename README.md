@@ -46,7 +46,7 @@ A workflow branches on these, so they are part of the interface.
 |:---|:---|
 | 0 | the check passed |
 | 1 | the check found problems — broken anchors, unused glossary terms, typography faults, or (with `--check`) translations that are not current |
-| 2 | the check could not run: `check-anchors` was given a site directory holding no built pages |
+| 2 | the check could not run, so a pass would prove nothing: `check-anchors` was given a site directory holding no built pages, or `translation-status` found no configured locales, no source pages, markdown outside every configured locale, or a `--since` ref it could not resolve |
 
 Glossaries and per-language rules stay in the documentation repository. This
 package brings the checkers, not the terminology.
