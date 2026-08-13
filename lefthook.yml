@@ -1,0 +1,26 @@
+pre-commit:
+  parallel: true
+  commands:
+    ruff-check:
+      glob: "*.py"
+      run: |
+        if command -v uv >/dev/null 2>&1; then
+          uv run ruff check src/ tests/
+        elif command -v ruff >/dev/null 2>&1; then
+          ruff check src/ tests/
+        else
+          echo "WARNING: ruff not found, skipping"
+          exit 0
+        fi
+      fail_text: "Run 'ruff check src/ tests/' to see issues."
+
+    pytest:
+      glob: "*.py"
+      run: |
+        if command -v uv >/dev/null 2>&1; then
+          uv run pytest -q
+        else
+          echo "WARNING: uv not found, skipping"
+          exit 0
+        fi
+      fail_text: "Run './run test' to see the failures."
