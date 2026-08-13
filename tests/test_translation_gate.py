@@ -82,3 +82,53 @@ def test_the_failure_names_entries_the_filtered_report_omitted(
     assert run("--check", "--format", "markdown", "--only-pages", "index.md") != 0
     out = capsys.readouterr().out
     assert "fi/guide.md" in out
+
+
+def test_a_page_with_another_markdown_extension_is_checked(docs_repo: DocsRepo):
+    """mkdocs publishes .markdown, .mdown, .mkdn and .mkd as well as .md.
+
+    A source page the checker does not enumerate is served in every locale
+    with the default language's content while the gate reports missing=0.
+    """
+    docs_repo.write("docs/en/guide.markdown", "# Guide\n\nBody.\n")
+    assert run("--check") != 0
+
+
+def test_a_page_under_a_symlinked_directory_is_checked(docs_repo: DocsRepo):
+    """mkdocs walks the docs tree with followlinks=True; rglob does not."""
+    shared = docs_repo.root / "shared_pages"
+    shared.mkdir()
+    (shared / "wiring.md").write_text("# Wiring\n\nBody.\n", encoding="utf-8")
+    (docs_repo.root / "docs/en/shared").symlink_to(shared)
+    assert run("--check") != 0
+
+
+def test_markdown_outside_every_configured_locale_stops_the_check(
+    docs_repo: DocsRepo, capsys
+):
+    """mkdocs-static-i18n serves a root-level page under every locale.
+
+    The checker cannot tell whether such a page needs translating, so it says
+    so rather than passing over it.
+    """
+    docs_repo.write("docs/safety.md", "# Safety\n\nBody.\n")
+    assert run("--check") == 2
+    out = capsys.readouterr().out
+    assert "docs/safety.md" in out
+    assert "cannot classify" in out
+
+
+def test_no_source_pages_is_not_a_pass(docs_repo: DocsRepo, capsys):
+    """A gate that fails open on a misconfiguration is the worst outcome."""
+    for page in (docs_repo.root / "docs/en").rglob("*.md"):
+        page.unlink()
+    assert run("--check") == 2
+    assert "no source pages" in capsys.readouterr().out
+
+
+def test_no_configured_locales_is_not_a_pass_under_check(docs_repo: DocsRepo, capsys):
+    from conftest import MKDOCS_ONLY_DEFAULT
+
+    docs_repo.write("mkdocs.yml", MKDOCS_ONLY_DEFAULT)
+    assert run("--check") == 2
+    assert "No translation languages configured." in capsys.readouterr().out

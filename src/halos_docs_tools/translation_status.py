@@ -19,6 +19,7 @@ so the gate ignores --only-pages, which narrows the report and not the rule.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,10 @@ import yaml
 
 DOCS = Path("docs")
 STAMP_KEY = "translated_from"
+# What mkdocs treats as a page. Enumerating only *.md leaves the rest published
+# in every locale carrying the default language's text, with nothing to report
+# them: they are not missing translations, they are pages nobody looked at.
+MARKDOWN = (".md", ".markdown", ".mdown", ".mkdn", ".mkd")
 # GitHub rejects a comment body over 65536 characters with HTTP 422. A wide
 # change produces a report far beyond that, so the diffs come out below this
 # and the reader is sent to the job summary for them.
@@ -58,7 +63,11 @@ def configured_languages() -> tuple[str, list[str]]:
 
 def blob_hash(path: Path) -> str:
     return subprocess.run(
-        ["git", "hash-object", str(path)],
+        # --no-filters: without it the hash is of the content after eol and
+        # .gitattributes filtering, so the stamp moves when repository or
+        # client configuration changes and no page does. Adding `* text=auto`
+        # would flip every translation to stale at once.
+        ["git", "hash-object", "--no-filters", str(path)],
         capture_output=True,
         text=True,
         check=True,
@@ -124,8 +133,37 @@ class Entry:
     diff: str | None = None
 
 
+def pages_under(root: Path) -> list[Path]:
+    """Every markdown page mkdocs would publish from this directory.
+
+    os.walk with followlinks, not rglob: mkdocs walks the docs tree following
+    symlinks, so a linked directory of shared pages is built and served. rglob
+    does not descend into one, which would leave those pages unexamined while
+    the report showed nothing wrong.
+    """
+    found: list[Path] = []
+    for directory, _, names in os.walk(root, followlinks=True):
+        found += [Path(directory) / name for name in names if name.endswith(MARKDOWN)]
+    return sorted(found)
+
+
+def unclassified_pages(default: str, languages: list[str]) -> list[Path]:
+    """Markdown under docs/ that belongs to no configured locale.
+
+    mkdocs-static-i18n serves such a page under every locale, untranslated.
+    Whether it should be translated is a question about the page, which this
+    tool cannot answer -- so it reports them rather than passing over them.
+    """
+    locales = {default, *languages}
+    return [
+        page
+        for page in pages_under(DOCS)
+        if page.relative_to(DOCS).parts[0] not in locales
+    ]
+
+
 def collect(default: str, languages: list[str], want_diff: bool) -> list[Entry]:
-    sources = sorted(p for p in (DOCS / default).rglob("*.md"))
+    sources = pages_under(DOCS / default)
     entries: list[Entry] = []
     for source in sources:
         relative = source.relative_to(DOCS / default)
@@ -148,7 +186,7 @@ def collect(default: str, languages: list[str], want_diff: bool) -> list[Entry]:
     # because that walks the sources. It is still a page being served.
     for language in languages:
         root = DOCS / language
-        for translation in sorted(root.rglob("*.md")):
+        for translation in pages_under(root):
             if not (DOCS / default / translation.relative_to(root)).exists():
                 entries.append(
                     Entry(language, str(translation.relative_to(root)), "orphaned", "")
@@ -298,7 +336,9 @@ def main(argv: list[str] | None = None) -> int:
     default, languages = configured_languages()
     if not languages:
         print("No translation languages configured.")
-        return 0
+        # Reporting nothing is fine. Gating on nothing is not: the check would
+        # pass because it had no work, which reads exactly like passing.
+        return 2 if args.check else 0
 
     entries = collect(default, languages, want_diff=args.diff or args.comment)
     if args.comment:
@@ -309,10 +349,35 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(render_text(entries))
 
-    behind = [e for e in entries if e.state != "current"]
-    if args.check and behind:
-        print(render_failure(behind))
-        return 1
+    if args.check:
+        # Exit 2 for "the check could not run over everything", distinct from
+        # 1 for "the check found stale translations". A gate that reports
+        # success over content it never examined is worse than no gate.
+        if not pages_under(DOCS / default):
+            print(
+                f"\nFound no source pages under {DOCS / default}. Nothing was checked."
+            )
+            return 2
+        stray = unclassified_pages(default, languages)
+        if stray:
+            print(
+                "\nThe check cannot classify these pages: they are under "
+                f"{DOCS} but in none of the configured locales "
+                f"({', '.join(sorted({default, *languages}))}), and mkdocs "
+                "serves such a page under every locale untranslated.\n"
+            )
+            for page in stray:
+                print(f"  {page}")
+            print(
+                "\nMove each one into a locale directory, or exclude it from "
+                "the documentation tree."
+            )
+            return 2
+
+        behind = [e for e in entries if e.state != "current"]
+        if behind:
+            print(render_failure(behind))
+            return 1
     return 0
 
 

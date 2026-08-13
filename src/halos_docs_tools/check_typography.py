@@ -119,10 +119,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # Named locales are checked whether or not they exist, so a renamed
+    # directory is reported. Unnamed, only the locales with pages are visited:
+    # printing "ok" for a locale that has no content is how a checker comes to
+    # report success over something it never read.
+    if args.languages:
+        languages = args.languages
+    else:
+        languages = [q for q in sorted(QUOTES) if Path("docs", q).is_dir()]
+
     worst = 0
-    for language in args.languages or sorted(QUOTES):
+    empty = []
+    for language in languages:
         opening, closing = QUOTES[language]
         pages = sorted(Path("docs", language).rglob("*.md"))
+        if not pages:
+            empty.append(language)
+            continue
         quotes = spacing = chains = 0
         problems: list[str] = []
         for page in pages:
@@ -167,6 +180,14 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems[:8]:
             print(problem)
         worst = max(worst, len(problems))
+
+    if empty or not languages:
+        named = ", ".join(empty) if empty else "any configured locale"
+        print(
+            f"Found no pages for {named} under docs/ — nothing to check.",
+            file=sys.stderr,
+        )
+        return 2
     return 1 if worst else 0
 
 

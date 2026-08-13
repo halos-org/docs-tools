@@ -87,11 +87,31 @@ def test_alternatives_separated_by_a_slash_each_satisfy_the_row(
 
 
 def test_header_and_separator_rows_are_not_terms(docs_repo: DocsRepo, capsys):
+    glossary(docs_repo, ("power supply", "virtalähde"))
+    docs_repo.source("index.md", "The power supply is fine. The power supply works.\n")
+    docs_repo.write("docs/fi/index.md", "Virtalähde on kunnossa.\n")
+    assert run("fi") == 0
+    # One data row, not three: the header and the alignment row are markup.
+    assert "Checked 1 glossary terms" in capsys.readouterr().out
+
+
+def test_a_glossary_with_no_data_rows_is_not_a_pass(docs_repo: DocsRepo, capsys):
     glossary(docs_repo)
     docs_repo.source("index.md", "Nothing here.\n")
     docs_repo.write("docs/fi/index.md", "Ei mitään.\n")
+    assert run("fi") == 2
+    assert "defines no terms" in capsys.readouterr().err
+
+
+def test_a_corpus_where_no_term_meets_the_thresholds_still_passes(
+    docs_repo: DocsRepo, capsys
+):
+    """A quiet run is not a broken one, but it must say which it was."""
+    glossary(docs_repo, ("power supply", "virtalähde"))
+    docs_repo.source("index.md", "The power supply is fine.\n")
+    docs_repo.write("docs/fi/index.md", "Teholähde on kunnossa.\n")
     assert run("fi") == 0
-    assert "Checked 0 glossary terms" in capsys.readouterr().out
+    assert "No term met the thresholds" in capsys.readouterr().out
 
 
 def test_source_locale_comes_from_mkdocs_not_a_hard_coded_en(
@@ -120,3 +140,15 @@ def test_source_locale_comes_from_mkdocs_not_a_hard_coded_en(
     docs_repo.write("docs/fi/index.md", "Teholähde on kunnossa.\n")
     assert run("fi") == 1
     assert "prescribed but unused" in capsys.readouterr().out
+
+
+def test_checking_no_terms_at_all_is_not_a_pass(docs_repo: DocsRepo, capsys):
+    """Exit 0 must mean "checked and passed", never "looked at nothing".
+
+    A renamed source directory would otherwise print the same success line a
+    correct run prints, with nothing in the log to tell them apart.
+    """
+    glossary(docs_repo, ("power supply", "virtalähde"))
+    (docs_repo.root / "docs/en").rename(docs_repo.root / "docs/english")
+    assert run("fi") == 2
+    assert "No source pages" in capsys.readouterr().err

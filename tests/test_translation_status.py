@@ -102,3 +102,28 @@ def test_text_format_lists_every_page_that_is_not_current(docs_repo: DocsRepo, c
     out = capsys.readouterr().out
     assert "missing   guide.md" in out
     assert "current=1" in out
+
+
+def test_the_stamp_does_not_move_when_gitattributes_changes(docs_repo: DocsRepo):
+    """The stamp must be a function of the file bytes, not of git config.
+
+    `git hash-object` applies eol and .gitattributes filters by default, so
+    adding `* text=auto` -- housekeeping that touches no page -- would flip
+    every translation to stale at once, and a contributor whose client
+    normalises differently would produce a stamp CI rejects.
+    """
+    (docs_repo.root / "docs/en/crlf.md").write_bytes(b"# Title\r\n\r\nBody.\r\n")
+    docs_repo.translation("fi", "crlf.md")
+    docs_repo.translation("sv", "crlf.md")
+    assert states(docs_repo)[("fi", "crlf.md")] == "current"
+
+    docs_repo.write(".gitattributes", "* text=auto\n")
+    assert states(docs_repo)[("fi", "crlf.md")] == "current"
+
+
+def test_the_stamp_does_not_move_under_core_autocrlf(docs_repo: DocsRepo):
+    (docs_repo.root / "docs/en/crlf.md").write_bytes(b"# Title\r\n\r\nBody.\r\n")
+    docs_repo.git("config", "core.autocrlf", "true")
+    plain = translation_status.blob_hash(docs_repo.root / "docs/en/crlf.md")
+    docs_repo.git("config", "core.autocrlf", "false")
+    assert translation_status.blob_hash(docs_repo.root / "docs/en/crlf.md") == plain

@@ -127,6 +127,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    if excluded == set(ids):
+        # fnmatch crosses '/', so '*' and '*.html' both reach every page.
+        # Silencing the whole site is the same false green the guard above
+        # exists to prevent, reached by a pattern rather than a wrong path.
+        print(
+            f"every built page is excluded by {args.exclude} — nothing to check.",
+            file=sys.stderr,
+        )
+        return 2
+
     broken: list[tuple[str, str, str]] = []
     checked = 0
 

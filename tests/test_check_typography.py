@@ -116,9 +116,29 @@ def test_filenames_are_not_read_as_compounds(docs_repo: DocsRepo, capsys):
     assert run("fi") == 0
 
 
-def test_no_arguments_checks_every_configured_language(docs_repo: DocsRepo, capsys):
-    docs_repo.write("docs/nb/index.md", "Se »her« i teksten.\n")
-    assert run() == 1
+def test_a_named_locale_with_no_pages_is_not_a_pass(docs_repo: DocsRepo, capsys):
+    """A renamed locale directory would otherwise silence the checker."""
+    import shutil
+
+    shutil.rmtree(docs_repo.root / "docs/fi")
+    assert run("fi") == 2
+    assert "no pages" in capsys.readouterr().err
+
+
+def test_no_arguments_checks_the_locales_that_exist(docs_repo: DocsRepo, capsys):
+    """The fixture has fi and sv on disk; the other seven rules have nothing."""
+    docs_repo.write("docs/nb/index.md", "Se «her» i teksten.\n")
+    assert run() == 0
     out = capsys.readouterr().out
-    for language in ("fi", "fr", "de", "sv", "es", "it", "nl", "nb", "da"):
-        assert f"{language}: " in out
+    for present in ("fi", "sv", "nb"):
+        assert f"{present}: " in out
+    assert "de: " not in out
+
+
+def test_no_locale_directory_at_all_is_not_a_pass(docs_repo: DocsRepo, capsys):
+    import shutil
+
+    for locale in ("fi", "sv"):
+        shutil.rmtree(docs_repo.root / f"docs/{locale}")
+    assert run() == 2
+    assert "no pages" in capsys.readouterr().err

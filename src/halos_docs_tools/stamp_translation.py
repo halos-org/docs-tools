@@ -37,7 +37,9 @@ def english_source(translation: Path, default: str) -> Path:
 
 def blob_hash(path: Path) -> str:
     return subprocess.run(
-        ["git", "hash-object", str(path)],
+        # --no-filters, matching translation_status.blob_hash. The two must
+        # agree exactly: one writes the stamp and the other reads it.
+        ["git", "hash-object", "--no-filters", str(path)],
         capture_output=True,
         text=True,
         check=True,

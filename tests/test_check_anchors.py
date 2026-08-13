@@ -125,3 +125,14 @@ def test_root_absolute_link_outside_the_base_is_not_ours(tmp_path: Path, capsys)
     site = tmp_path / "site"
     page(site, "index.html", '<a href="/elsewhere/#x">go</a>')
     assert run(str(site), "--base", "/halpi2/") == 0
+
+
+def test_excluding_every_page_is_not_a_pass(tmp_path: Path, capsys):
+    """fnmatch crosses '/', so a broad pattern can silence the whole site."""
+    site = tmp_path / "site"
+    page(site, "index.html", '<a href="ghost/#x">go</a>')
+    page(site, "sub/deep.html", '<a href="ghost/#y">go</a>')
+    assert run(str(site)) == 1
+    assert run(str(site), "--exclude", "*") == 2
+    assert "every built page is excluded" in capsys.readouterr().err
+    assert run(str(site), "--exclude", "*.html") == 2

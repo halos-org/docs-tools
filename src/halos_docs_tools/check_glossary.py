@@ -131,9 +131,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     source_locale, _ = configured_languages()
-    english = read_pages(Path(args.docs) / source_locale)
+    source_root = Path(args.docs) / source_locale
+    english = read_pages(source_root)
     translated = read_pages(Path(args.docs) / args.language)
     glossary = Path(args.glossaries) / GLOSSARIES[args.language]
+
+    # An absent corpus and a glossary with no rows both make every comparison
+    # vacuous, and the success line they print is the one a correct run
+    # prints. Distinguish them here; a glossary whose terms are simply too
+    # rare to check is a different, legitimate case, reported below.
+    if not english.strip():
+        print(
+            f"No source pages under {source_root} — nothing to check.", file=sys.stderr
+        )
+        return 2
+    if not terms(glossary):
+        print(f"{glossary} defines no terms — nothing to check.", file=sys.stderr)
+        return 2
 
     checked, unused = 0, []
     for source, target in terms(glossary):
@@ -149,6 +163,15 @@ def main(argv: list[str] | None = None) -> int:
             unused.append((source, target, uses))
 
     print(f"Checked {checked} glossary terms against docs/{args.language}.")
+    if not checked:
+        # Not a failure: the corpus and the glossary both exist, and no term
+        # met the length and frequency thresholds. Say so, so the log does not
+        # read as a clean check.
+        print(
+            f"No term met the thresholds ({SHORTEST_TERM} characters, "
+            f"{MIN_ENGLISH_USES} uses in {source_locale}) — nothing compared."
+        )
+        return 0
     if unused:
         print(f"\n{len(unused)} prescribed but unused — something else took over:\n")
         for source, target, uses in unused:
