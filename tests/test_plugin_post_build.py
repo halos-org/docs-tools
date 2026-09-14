@@ -79,7 +79,7 @@ def test_a_built_locale_missing_from_the_map_fails(site: SiteRepo):
     page.write_text(page.read_text().replace('"da": ', '"zz": '), encoding="utf-8")
     config = _configured(site)
     with pytest.raises(PluginError, match=r"offers.*expected"):
-        config["plugins"]["halos-i18n"].on_post_build(config)
+        plugin.check_site(config, site.root / "site")
 
 
 def test_a_page_declaring_an_unbuilt_language_fails(site: SiteRepo):
@@ -90,7 +90,7 @@ def test_a_page_declaring_an_unbuilt_language_fails(site: SiteRepo):
     )
     config = _configured(site)
     with pytest.raises(PluginError, match="declares lang=zz"):
-        config["plugins"]["halos-i18n"].on_post_build(config)
+        plugin.check_site(config, site.root / "site")
 
 
 def test_a_404_built_as_the_wrong_edition_fails(site: SiteRepo):
@@ -101,7 +101,7 @@ def test_a_404_built_as_the_wrong_edition_fails(site: SiteRepo):
     )
     config = _configured(site)
     with pytest.raises(PluginError, match="was built as da, not en"):
-        config["plugins"]["halos-i18n"].on_post_build(config)
+        plugin.check_site(config, site.root / "site")
 
 
 def test_a_404_offering_the_wrong_editions_fails(site: SiteRepo):
@@ -113,7 +113,7 @@ def test_a_404_offering_the_wrong_editions_fails(site: SiteRepo):
     )
     config = _configured(site)
     with pytest.raises(PluginError, match=r"404.html offers.*expected"):
-        config["plugins"]["halos-i18n"].on_post_build(config)
+        plugin.check_site(config, site.root / "site")
 
 
 def test_a_page_without_a_language_selector_fails(site: SiteRepo):
@@ -124,11 +124,17 @@ def test_a_page_without_a_language_selector_fails(site: SiteRepo):
     )
     config = _configured(site)
     with pytest.raises(PluginError, match="no language selector"):
-        config["plugins"]["halos-i18n"].on_post_build(config)
+        plugin.check_site(config, site.root / "site")
 
 
 def _configured(site: SiteRepo):
-    """The site's config with `on_config` fired, for checking a built site."""
+    """The site's config with `on_config` fired, for checking a built site.
+
+    The checks are called directly rather than through `on_post_build`, which
+    also splits the search index and is not idempotent: the real build already
+    split it, so a second pass would find every edition empty and raise that
+    instead of what the test is aimed at.
+    """
     from mkdocs.config import load_config
 
     config = load_config(str(site.root / "mkdocs.yml"), strict=True)

@@ -37,6 +37,9 @@ ALTERNATES_MAP = re.compile(r"var ALTERNATES = (\{.*?\n    \});", re.S)
 EDITION_LOCALES = re.compile(r'\n      "([a-z-]+)": \{\n        url:')
 X_DEFAULT_LINK = re.compile(r'<link rel="alternate" [^>]*hreflang="x-default">')
 HTML_LANG = re.compile(r'<html[^>]*\blang="([^"]*)"')
+CONFIG_SCRIPT = re.compile(
+    r'(<script id="__config" type="application/json">)(.*?)(</script>)', re.S
+)
 
 
 class HalosI18nConfig(config_options.Config):
@@ -104,21 +107,113 @@ class HalosI18nPlugin(BasePlugin[HalosI18nConfig]):
         Every assumption these templates rest on degrades to omitted output
         rather than a build error: a plugin upgrade could ship a site that
         silently stops selecting a language. This is what makes that loud.
+
+        The search index is split here too, before the checks, so that the
+        checks read the pages as they ship.
         """
         if _building(config):
             return
 
-        expected = sorted(locale.lower() for locale in config["extra"]["locales"])
-        if len(expected) < 2:
+        if len(config["extra"]["locales"]) < 2:
             return
 
         site_dir = Path(config["site_dir"])
-        default = config["extra"]["default_locale"].lower()
-        for page in sorted(site_dir.rglob("*.html")):
-            if page.name == UNPAGED and page.parent == site_dir:
-                _check_unpaged(page, expected, default)
-            else:
-                _check_page(page, expected)
+        _split_search_index(config, site_dir)
+        check_site(config, site_dir)
+
+
+def check_site(config, site_dir):
+    """Assert every built page still carries what the templates promised."""
+    expected = sorted(locale.lower() for locale in config["extra"]["locales"])
+    default = config["extra"]["default_locale"].lower()
+    for page in sorted(Path(site_dir).rglob("*.html")):
+        if page.name == UNPAGED and page.parent == Path(site_dir):
+            _check_unpaged(page, expected, default)
+        else:
+            _check_page(page, expected)
+
+
+def _split_search_index(config, site_dir):
+    """Give every language edition its own search index.
+
+    `mkdocs-static-i18n` merges all editions into one `search/search_index.json`,
+    and Material resolves that file against `__config.base`, which points at the
+    site root on every page. Searching from a translated page therefore returns
+    hits in every other language.
+
+    This splits the merged index by locale, writes each edition its own copy,
+    and repoints `__config.base` on the edition's pages at the edition root,
+    which is the only value Material derives the index URL from.
+    """
+    if not any(name.endswith("search") for name in config["plugins"]):
+        return
+
+    index_path = site_dir / "search" / "search_index.json"
+    if not index_path.exists():
+        raise PluginError(f"halos-i18n: no merged search index at {index_path}")
+
+    default = config["extra"]["default_locale"]
+    locales = [locale for locale in config["extra"]["locales"] if locale != default]
+
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    editions = {locale: [] for locale in locales}
+    default_docs = []
+    for doc in index["docs"]:
+        locale, _, path = doc["location"].partition("/")
+        if locale in editions:
+            editions[locale].append({**doc, "location": path})
+        else:
+            default_docs.append(doc)
+
+    empty = sorted(locale for locale, docs in editions.items() if not docs)
+    if empty or not default_docs:
+        raise PluginError(
+            "halos-i18n: no index entries for "
+            + ", ".join(empty + ([default] if not default_docs else []))
+        )
+
+    stemmers = set(index.get("config", {}).get("lang", []))
+    for locale, docs in editions.items():
+        edition_index = {
+            **index,
+            "docs": docs,
+            "config": {
+                **index["config"],
+                "lang": [locale] if locale in stemmers else ["en"],
+            },
+        }
+        target = site_dir / locale / "search" / "search_index.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(edition_index), encoding="utf-8")
+        _repoint_base(site_dir / locale)
+
+    index["docs"] = default_docs
+    index["config"] = {
+        **index["config"],
+        "lang": [default] if default in stemmers else ["en"],
+    }
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+
+def _repoint_base(edition_dir):
+    """Point `__config.base` at the edition root instead of the site root."""
+    for page in edition_dir.rglob("*.html"):
+        depth = len(page.parent.relative_to(edition_dir).parts)
+        base = "/".join([".."] * depth) if depth else "."
+        page.write_text(_rebased(page, base), encoding="utf-8")
+
+
+def _rebased(page, base):
+    def rewrite(match):
+        settings = json.loads(match.group(2))
+        settings["base"] = base
+        return match.group(1) + json.dumps(settings) + match.group(3)
+
+    text = page.read_text(encoding="utf-8")
+    patched, count = CONFIG_SCRIPT.subn(rewrite, text, count=1)
+    if not count:
+        raise PluginError(f"halos-i18n: no __config script in {page}")
+    return patched
 
 
 def _building(config):
