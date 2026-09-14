@@ -15,6 +15,8 @@ They share the locale list, the edition roots and the Norwegian alias table, so
 they are one plugin rather than three.
 """
 
+import json
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -27,6 +29,15 @@ from halos_docs_tools.mkdocs_plugin.not_found import NOT_FOUND, WORDING
 
 TEMPLATES = Path(__file__).parent / "templates"
 
+# Rendered by MkDocs itself rather than from a page, so it carries no redirect
+# script. `404.html` selects a language for it at runtime instead.
+UNPAGED = "404.html"
+
+ALTERNATES_MAP = re.compile(r"var ALTERNATES = (\{.*?\n    \});", re.S)
+EDITION_LOCALES = re.compile(r'\n      "([a-z-]+)": \{\n        url:')
+X_DEFAULT_LINK = re.compile(r'<link rel="alternate" [^>]*hreflang="x-default">')
+HTML_LANG = re.compile(r'<html[^>]*\blang="([^"]*)"')
+
 
 class HalosI18nConfig(config_options.Config):
     not_found = config_options.Type(dict, default={})
@@ -34,6 +45,10 @@ class HalosI18nConfig(config_options.Config):
 
 class HalosI18nPlugin(BasePlugin[HalosI18nConfig]):
     """Language selection, a multi-edition 404 page, and per-edition search."""
+
+    def __init__(self):
+        super().__init__()
+        self._default_edition_404 = None
 
     @event_priority(-100)
     def on_config(self, config):
@@ -57,6 +72,97 @@ class HalosI18nPlugin(BasePlugin[HalosI18nConfig]):
 
         _add_templates(config["theme"])
         return config
+
+    def on_post_template(self, output, template_name, config):
+        """Keep the default edition's 404 page instead of the last locale built.
+
+        `mkdocs-static-i18n` builds the default language in the outer build,
+        then loops over the remaining locales with nested `build()` calls. Every
+        one of those writes `site/404.html`, so the file that survives belongs
+        to whichever locale is last in `mkdocs.yml` — with that locale's chrome
+        and a logo linking into that locale's edition. GitHub Pages serves that
+        one file for every URL that does not resolve, in every edition.
+
+        Replacing the output as it is rendered leaves nothing to undo
+        afterwards. The template then picks the reader's language at runtime,
+        which is what makes one stable page enough for ten editions.
+        """
+        if template_name != UNPAGED:
+            return output
+        if not _building(config):
+            self._default_edition_404 = output
+            return output
+        return self._default_edition_404 or output
+
+    @event_priority(-200)
+    def on_post_build(self, config):
+        """Check what the templates produced, after every edition is built.
+
+        Priority -200 runs after the i18n plugin's nested builds, which it
+        starts from its own post-build handler at -100.
+
+        Every assumption these templates rest on degrades to omitted output
+        rather than a build error: a plugin upgrade could ship a site that
+        silently stops selecting a language. This is what makes that loud.
+        """
+        if _building(config):
+            return
+
+        expected = sorted(locale.lower() for locale in config["extra"]["locales"])
+        if len(expected) < 2:
+            return
+
+        site_dir = Path(config["site_dir"])
+        default = config["extra"]["default_locale"].lower()
+        for page in sorted(site_dir.rglob("*.html")):
+            if page.name == UNPAGED and page.parent == site_dir:
+                _check_unpaged(page, expected, default)
+            else:
+                _check_page(page, expected)
+
+
+def _building(config):
+    """True inside one of the i18n plugin's nested per-locale builds."""
+    i18n = config["plugins"].get("i18n")
+    return i18n is not None and i18n.building
+
+
+def _check_page(page, expected):
+    text = page.read_text(encoding="utf-8")
+
+    lang = HTML_LANG.search(text)
+    if lang is None or lang.group(1).lower() not in expected:
+        found = lang.group(1) if lang else "nothing"
+        raise PluginError(f"halos-i18n: {page} declares lang={found}")
+
+    if len(X_DEFAULT_LINK.findall(text)) != 1:
+        raise PluginError(f"halos-i18n: no single x-default link in {page}")
+
+    match = ALTERNATES_MAP.search(text)
+    if match is None:
+        raise PluginError(f"halos-i18n: no language script in {page}")
+    locales = sorted(json.loads(match.group(1)))
+    if locales != expected:
+        raise PluginError(f"halos-i18n: {page} offers {locales}, expected {expected}")
+
+    if '<a href="' not in text or "md-select__link" not in text:
+        raise PluginError(f"halos-i18n: no language selector in {page}")
+
+
+def _check_unpaged(page, expected, default_locale):
+    """The 404 page ships every edition's wording and picks one in the browser."""
+    text = page.read_text(encoding="utf-8")
+
+    lang = HTML_LANG.search(text)
+    if lang is None or lang.group(1).lower() != default_locale:
+        found = lang.group(1) if lang else "nothing"
+        raise PluginError(
+            f"halos-i18n: {page} was built as {found}, not {default_locale}"
+        )
+
+    locales = sorted(EDITION_LOCALES.findall(text))
+    if locales != expected:
+        raise PluginError(f"halos-i18n: {page} offers {locales}, expected {expected}")
 
 
 def _add_templates(theme):
