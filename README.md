@@ -1,7 +1,8 @@
 # halos-docs-tools
 
 Documentation checkers for HaLOS and Hat Labs MkDocs sites: translation status,
-stamping, anchor validation, glossary and typography checks.
+stamping, anchor validation, glossary and typography checks. Plus `halos-i18n`,
+a MkDocs plugin that makes a multi-edition site behave like one site.
 
 The same code runs in CI and on a laptop. Every check a pull request must pass is
 runnable before you push.
@@ -17,8 +18,9 @@ dependencies = [
 ```
 
 Use a tag from the [releases page](https://github.com/halos-org/docs-tools/releases).
-`uv sync` then puts all six commands on the path. Each repository pins its own
-version; upgrading is a deliberate edit to that pin.
+`uv sync` then puts all six commands on the path and makes the `halos-i18n`
+MkDocs plugin available by name. Each repository pins its own version; upgrading
+is a deliberate edit to that pin.
 
 `git` must be on the path. `translation-status`, `stamp-translation` and
 `check-glossary` shell out to it, and it is not something a Python dependency
@@ -69,6 +71,83 @@ linkable, so other pages may still point into it.
 `mkdocs.yml`. A base that does not match the site makes the checker skip every
 root-absolute link and report a pass it did not earn, so override it only when
 you know the built site differs from the configuration.
+
+## The `halos-i18n` MkDocs plugin
+
+`mkdocs-static-i18n` builds one edition per locale and leaves the rest to the
+theme. Three things are then missing, and all three are the same concern, so
+they are one plugin:
+
+- A visitor of the default edition is not sent to the edition matching their
+  browser languages. GitHub Pages cannot negotiate content, so that choice has
+  to happen in the browser.
+- One `404.html` is served for every URL that does not resolve, in every
+  edition, and the build can only produce one copy of it.
+- The search index is merged across editions, so a search from a translated
+  page returns hits in every other language.
+
+Enable it by name:
+
+```yaml
+plugins:
+  - search
+  - i18n:
+      # ...
+  - halos-i18n
+```
+
+It needs `site_url` and an `i18n` block with exactly one default locale, and it
+fails the build when either is missing.
+
+A repository needs no `hooks:`, no `theme.custom_dir` and no `extra.not_found`.
+The plugin supplies `main.html`, `404.html` and the 404 wording for ten locales.
+
+### What the redirect does, and does not
+
+Only the default edition redirects, so a link shared in one language keeps its
+language. A URL fragment suppresses the redirect, because heading ids are
+translated and the anchor would not survive the move. A same-origin referrer
+suppresses it, because a reader who reached the page from inside the site made
+a deliberate choice. Query parameters survive the redirect — Material's own
+`?q=` and `?h=` are language-neutral.
+
+A language chosen from the selector is remembered in local storage, under a key
+derived from `site_url`. The sites share an origin, so a shared key would let
+one site's choice follow a reader into another.
+
+Norwegian browsers send either the macrolanguage `no` or the written form `nn`.
+Both are treated as `nb`. An exact locale match always wins over an alias.
+
+### Overriding the 404 wording
+
+The wording ships with the package. Override a locale to change it, supplying
+all three strings — a partial override is refused, so a half-translated locale
+cannot happen:
+
+```yaml
+plugins:
+  - halos-i18n:
+      not_found:
+        fi:
+          title: "Sivua ei löytynyt"
+          message: "Pyytämääsi sivua ei ole."
+          home: "Siirry etusivulle"
+```
+
+### Keeping your own template
+
+The plugin inserts its template directory behind anything `custom_dir` supplies
+and ahead of the theme. A repository that needs its own `main.html` puts
+`custom_dir` back and wins, with no change here.
+
+### What fails the build
+
+Everything the templates rest on degrades to omitted output rather than an
+error, so a dependency upgrade could ship a site that quietly stops selecting a
+language. After the build the plugin asserts what the templates promised: every
+page declares a language among the built locales, carries one `x-default` link,
+offers the full locale set, and has a language selector. The 404 page must be
+the default edition's and must carry every edition's wording.
 
 ## How translation staleness is detected
 
