@@ -41,7 +41,8 @@ def test_the_root_index_keeps_only_the_default_edition(site: SiteRepo):
     site.build()
     docs = index(site, "search/search_index.json")["docs"]
     assert docs
-    assert not any(doc["location"].startswith(("fi/", "da/")) for doc in docs)
+    translated = tuple(f"{locale}/" for locale in site.locales[1:])
+    assert not any(doc["location"].startswith(translated) for doc in docs)
 
 
 def test_an_edition_index_drops_the_locale_from_each_location(site: SiteRepo):
@@ -91,7 +92,7 @@ def test_a_missing_merged_index_is_refused(site: SiteRepo):
     site.build()
     (site.root / "site" / "search" / "search_index.json").unlink()
     with pytest.raises(PluginError, match="no merged search index"):
-        plugin._split_search_index(_configured(site), site.root / "site")
+        plugin._split_search_index(_configured(site), site.root / "site", site.rendered)
 
 
 def test_an_edition_with_no_entries_is_refused(two_locale_site: SiteRepo):
@@ -114,7 +115,9 @@ def test_an_edition_with_no_entries_is_refused(two_locale_site: SiteRepo):
     )
     with pytest.raises(PluginError, match="no index entries for fi"):
         plugin._split_search_index(
-            _configured(two_locale_site), two_locale_site.root / "site"
+            _configured(two_locale_site),
+            two_locale_site.root / "site",
+            two_locale_site.rendered,
         )
 
 
@@ -123,7 +126,19 @@ def test_a_page_without_a_config_script_is_refused(site: SiteRepo):
     page = site.root / "site" / "fi" / "index.html"
     page.write_text(CONFIG_SCRIPT.sub("", page.read_text()), encoding="utf-8")
     with pytest.raises(PluginError, match="no __config script"):
-        plugin._repoint_base(site.root / "site" / "fi")
+        plugin._repoint_base(site.root / "site", "fi", site.rendered)
+
+
+def test_a_copied_html_asset_is_not_rewritten(two_locale_site: SiteRepo):
+    """MkDocs copies a non-Markdown file through unchanged.
+
+    Such a file has no Material `__config` script, so rewriting its search base
+    would fail a build that is correct.
+    """
+    two_locale_site.write("docs/en/assets/widget.html", "<div>asset</div>\n")
+    two_locale_site.write("docs/fi/assets/widget.html", "<div>resurssi</div>\n")
+    two_locale_site.build()
+    assert two_locale_site.page("fi/assets/widget.html") == "<div>resurssi</div>\n"
 
 
 def test_a_site_without_a_search_plugin_is_left_alone(tmp_path, monkeypatch):

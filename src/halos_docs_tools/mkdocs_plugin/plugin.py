@@ -34,7 +34,7 @@ TEMPLATES = Path(__file__).parent / "templates"
 UNPAGED = "404.html"
 
 ALTERNATES_MAP = re.compile(r"var ALTERNATES = (\{.*?\n    \});", re.S)
-EDITION_LOCALES = re.compile(r'\n      "([a-z-]+)": \{\n        url:')
+EDITION_LOCALES = re.compile(r'\n      "([a-z0-9_-]+)": \{\n        url:')
 X_DEFAULT_LINK = re.compile(r'<link rel="alternate" [^>]*hreflang="x-default">')
 HTML_LANG = re.compile(r'<html[^>]*\blang="([^"]*)"')
 CONFIG_SCRIPT = re.compile(
@@ -52,6 +52,7 @@ class HalosI18nPlugin(BasePlugin[HalosI18nConfig]):
     def __init__(self):
         super().__init__()
         self._default_edition_404 = None
+        self._rendered = set()
 
     @event_priority(-100)
     def on_config(self, config):
@@ -60,6 +61,11 @@ class HalosI18nPlugin(BasePlugin[HalosI18nConfig]):
         Priority -100 puts this after the i18n plugin has validated its own
         config, which is where the language list becomes trustworthy.
         """
+        if not config["site_url"]:
+            raise PluginError(
+                "halos-i18n: site_url is required — the edition roots and the "
+                "language storage key are both derived from it"
+            )
         languages = _languages(config)
 
         default = [language.locale for language in languages if language.default]
@@ -75,6 +81,17 @@ class HalosI18nPlugin(BasePlugin[HalosI18nConfig]):
 
         _add_templates(config["theme"])
         return config
+
+    def on_post_page(self, output, page, config):
+        """Record which files MkDocs rendered, across every nested build.
+
+        MkDocs copies a non-Markdown file through unchanged, so an HTML asset
+        under `docs/` lands in the built site with no Material `__config` script
+        and no language metadata. Checking it as a page, or rewriting its search
+        base, fails a build that is correct.
+        """
+        self._rendered.add(page.file.dest_uri)
+        return output
 
     def on_post_template(self, output, template_name, config):
         """Keep the default edition's 404 page instead of the last locale built.
@@ -118,22 +135,27 @@ class HalosI18nPlugin(BasePlugin[HalosI18nConfig]):
             return
 
         site_dir = Path(config["site_dir"])
-        _split_search_index(config, site_dir)
-        check_site(config, site_dir)
+        pages = sorted(self._rendered)
+        _split_search_index(config, site_dir, pages)
+        check_site(config, site_dir, pages)
 
 
-def check_site(config, site_dir):
-    """Assert every built page still carries what the templates promised."""
+def check_site(config, site_dir, pages):
+    """Assert every rendered page still carries what the templates promised."""
     expected = sorted(locale.lower() for locale in config["extra"]["locales"])
     default = config["extra"]["default_locale"].lower()
-    for page in sorted(Path(site_dir).rglob("*.html")):
-        if page.name == UNPAGED and page.parent == Path(site_dir):
-            _check_unpaged(page, expected, default)
-        else:
+    site_dir = Path(site_dir)
+
+    unpaged = site_dir / UNPAGED
+    if unpaged.exists():
+        _check_unpaged(unpaged, expected, default)
+    for relative in pages:
+        page = site_dir / relative
+        if page.suffix == ".html" and page.exists():
             _check_page(page, expected)
 
 
-def _split_search_index(config, site_dir):
+def _split_search_index(config, site_dir, pages):
     """Give every language edition its own search index.
 
     `mkdocs-static-i18n` merges all editions into one `search/search_index.json`,
@@ -185,7 +207,7 @@ def _split_search_index(config, site_dir):
         target = site_dir / locale / "search" / "search_index.json"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(edition_index), encoding="utf-8")
-        _repoint_base(site_dir / locale)
+        _repoint_base(site_dir, locale, pages)
 
     index["docs"] = default_docs
     index["config"] = {
@@ -195,9 +217,13 @@ def _split_search_index(config, site_dir):
     index_path.write_text(json.dumps(index), encoding="utf-8")
 
 
-def _repoint_base(edition_dir):
+def _repoint_base(site_dir, locale, pages):
     """Point `__config.base` at the edition root instead of the site root."""
-    for page in edition_dir.rglob("*.html"):
+    edition_dir = Path(site_dir) / locale
+    for relative in pages:
+        page = Path(site_dir) / relative
+        if page.suffix != ".html" or not page.is_relative_to(edition_dir):
+            continue
         depth = len(page.parent.relative_to(edition_dir).parts)
         base = "/".join([".."] * depth) if depth else "."
         page.write_text(_rebased(page, base), encoding="utf-8")
@@ -268,6 +294,10 @@ def _add_templates(theme):
     change here. Anchoring on the theme directory rather than on a `custom_dir`
     that may not be set also keeps a parent theme behind us.
     """
+    # `on_config` runs again for each of the i18n plugin's nested builds, on
+    # the same config object. Without this the list grows one entry per locale.
+    if str(TEMPLATES) in theme.dirs:
+        return
     anchor = get_theme_dir(theme.name) if theme.name else None
     at = theme.dirs.index(anchor) if anchor in theme.dirs else 0
     theme.dirs.insert(at, str(TEMPLATES))
@@ -287,7 +317,7 @@ def _edition_roots(config, locales, default):
     relative, and MkDocs' `url` filter has no spelling for the site root on
     that page. Build the roots from `site_url` instead.
     """
-    base = urlsplit(config["site_url"] or "/").path
+    base = urlsplit(config["site_url"]).path
     if not base.endswith("/"):
         base += "/"
     return {
@@ -318,5 +348,5 @@ def _storage_key(config):
     The sites share an origin, so they share local storage. A shared key would
     let one site's language choice follow a reader into another.
     """
-    path = urlsplit(config["site_url"] or "/").path.strip("/")
+    path = urlsplit(config["site_url"]).path.strip("/")
     return f"halos-docs.{path.replace('/', '.') or 'root'}.language"

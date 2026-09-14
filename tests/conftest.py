@@ -153,6 +153,7 @@ class SiteRepo:
 
     root: Path
     locales: list[str]
+    config: object = None
 
     def configure(
         self,
@@ -203,8 +204,16 @@ class SiteRepo:
         from mkdocs.config import load_config
 
         config = load_config(str(self.root / "mkdocs.yml"), strict=strict)
-        mkdocs_build(config)
+        try:
+            mkdocs_build(config)
+        finally:
+            self.config = config
         return self.root / "site"
+
+    @property
+    def rendered(self) -> list[str]:
+        """The pages MkDocs rendered, as the plugin recorded them."""
+        return sorted(self.config["plugins"]["halos-i18n"]._rendered)
 
     def page(self, relative: str) -> str:
         return (self.root / "site" / relative).read_text(encoding="utf-8")

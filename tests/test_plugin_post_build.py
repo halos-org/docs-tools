@@ -53,6 +53,26 @@ def test_a_single_locale_site_skips_the_checks(tmp_path, monkeypatch):
     assert (tmp_path / "site" / "index.html").exists()
 
 
+def test_a_copied_html_asset_is_not_checked_as_a_page(two_locale_site: SiteRepo):
+    """An HTML asset under `docs/` carries no language metadata by design."""
+    two_locale_site.write("docs/en/assets/widget.html", "<div>asset</div>\n")
+    two_locale_site.write("docs/fi/assets/widget.html", "<div>resurssi</div>\n")
+    two_locale_site.build()
+    assert (two_locale_site.root / "site" / "fi" / "assets" / "widget.html").exists()
+
+
+def test_the_edition_pattern_accepts_a_regional_locale_identifier():
+    """`mkdocs-static-i18n` allows identifiers such as `en_US`.
+
+    No such site can build against Material, which has no language partial for
+    a regional identifier, so this is not reachable through a build. The pattern
+    still has to match what the template can emit: the template lowercases the
+    configured locale and writes it verbatim.
+    """
+    rendered = '\n      "en_us": {\n        url: "/product/en_us/",'
+    assert plugin.EDITION_LOCALES.findall(rendered) == ["en_us"]
+
+
 def test_a_page_that_lost_its_x_default_link_fails_the_build(
     site: SiteRepo, monkeypatch, caplog
 ):
@@ -79,7 +99,7 @@ def test_a_built_locale_missing_from_the_map_fails(site: SiteRepo):
     page.write_text(page.read_text().replace('"da": ', '"zz": '), encoding="utf-8")
     config = _configured(site)
     with pytest.raises(PluginError, match=r"offers.*expected"):
-        plugin.check_site(config, site.root / "site")
+        plugin.check_site(config, site.root / "site", site.rendered)
 
 
 def test_a_page_declaring_an_unbuilt_language_fails(site: SiteRepo):
@@ -90,7 +110,7 @@ def test_a_page_declaring_an_unbuilt_language_fails(site: SiteRepo):
     )
     config = _configured(site)
     with pytest.raises(PluginError, match="declares lang=zz"):
-        plugin.check_site(config, site.root / "site")
+        plugin.check_site(config, site.root / "site", site.rendered)
 
 
 def test_a_404_built_as_the_wrong_edition_fails(site: SiteRepo):
@@ -101,7 +121,7 @@ def test_a_404_built_as_the_wrong_edition_fails(site: SiteRepo):
     )
     config = _configured(site)
     with pytest.raises(PluginError, match="was built as da, not en"):
-        plugin.check_site(config, site.root / "site")
+        plugin.check_site(config, site.root / "site", site.rendered)
 
 
 def test_a_404_offering_the_wrong_editions_fails(site: SiteRepo):
@@ -113,7 +133,7 @@ def test_a_404_offering_the_wrong_editions_fails(site: SiteRepo):
     )
     config = _configured(site)
     with pytest.raises(PluginError, match=r"404.html offers.*expected"):
-        plugin.check_site(config, site.root / "site")
+        plugin.check_site(config, site.root / "site", site.rendered)
 
 
 def test_a_page_without_a_language_selector_fails(site: SiteRepo):
@@ -124,7 +144,7 @@ def test_a_page_without_a_language_selector_fails(site: SiteRepo):
     )
     config = _configured(site)
     with pytest.raises(PluginError, match="no language selector"):
-        plugin.check_site(config, site.root / "site")
+        plugin.check_site(config, site.root / "site", site.rendered)
 
 
 def _configured(site: SiteRepo):

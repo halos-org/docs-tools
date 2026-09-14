@@ -12,6 +12,8 @@ from conftest import SiteRepo
 from mkdocs.config import load_config
 from mkdocs.exceptions import PluginError
 
+from halos_docs_tools.mkdocs_plugin import plugin
+
 
 def configured(site: SiteRepo):
     """Load the config and fire `on_config`, which `load_config` does not.
@@ -56,11 +58,11 @@ def test_a_site_url_without_a_trailing_slash_still_yields_one(site: SiteRepo):
     assert configured(site)["extra"]["edition_roots"]["en"] == "/product/"
 
 
-def test_an_unset_site_url_falls_back_to_the_root(site: SiteRepo):
+def test_an_unset_site_url_is_refused(site: SiteRepo):
+    """Without it every site would share one storage key and one edition root."""
     site.configure(site_url=None)
-    roots = configured(site)["extra"]["edition_roots"]
-    assert roots["en"] == "/"
-    assert roots["fi"] == "/fi/"
+    with pytest.raises(PluginError, match="site_url is required"):
+        configured(site)
 
 
 def names(config) -> list[str]:
@@ -113,7 +115,9 @@ def test_two_default_locales_are_refused(site: SiteRepo):
 
 def test_a_site_without_the_i18n_plugin_is_refused(site: SiteRepo):
     (site.root / "mkdocs.yml").write_text(
-        "site_name: Test docs\nplugins:\n  - halos-i18n\n"
+        "site_name: Test docs\n"
+        "site_url: https://docs.example.invalid/product\n"
+        "plugins:\n  - halos-i18n\n"
     )
     with pytest.raises(PluginError, match="i18n plugin is not enabled"):
         configured(site)
@@ -164,3 +168,10 @@ def test_sites_at_different_paths_get_different_storage_keys(site: SiteRepo):
 def test_a_site_at_the_origin_root_still_gets_a_key(site: SiteRepo):
     site.configure(site_url="https://docs.example.invalid/")
     assert configured(site)["extra"]["language_storage_key"].endswith(".language")
+
+
+def test_the_template_directory_is_inserted_once_per_build(site: SiteRepo):
+    """`on_config` runs again for each nested build, on the same config object."""
+    site.build()
+    dirs = site.config["theme"].dirs
+    assert dirs.count(str(plugin.TEMPLATES)) == 1
