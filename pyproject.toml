@@ -26,11 +26,14 @@ classifiers = [
 ]
 
 dependencies = [
+    "mkdocs>=1.6",
     "pyyaml>=6.0",
 ]
 
 [dependency-groups]
 dev = [
+    "mkdocs-material>=9.5",
+    "mkdocs-static-i18n>=1.3.1",
     "pytest>=7.0",
     "ruff>=0.1.0",
 ]
@@ -43,6 +46,9 @@ check-glossary = "halos_docs_tools.check_glossary:main"
 check-typography = "halos_docs_tools.check_typography:main"
 check-anchors = "halos_docs_tools.check_anchors:main"
 
+[project.entry-points."mkdocs.plugins"]
+halos-i18n = "halos_docs_tools.mkdocs_plugin.plugin:HalosI18nPlugin"
+
 [project.urls]
 Homepage = "https://github.com/halos-org/docs-tools"
 Repository = "https://github.com/halos-org/docs-tools"
@@ -53,6 +59,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"halos_docs_tools.mkdocs_plugin" = ["templates/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
