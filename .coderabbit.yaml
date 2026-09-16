@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+
+language: en-GB
+
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+
+  path_filters:
+    - "!uv.lock"
+
+  path_instructions:
+    - path: "src/halos_docs_tools/*.py"
+      instructions: |
+        The six documentation checkers. Their console entry point names and
+        their exit statuses are a public interface: `halos-org/shared-workflows`
+        calls them by name and branches on the status, and four documentation
+        repositories pin this package. Flag any change that renames a command,
+        changes an exit status, or alters the `translated_from` stamp format,
+        because consumers carry thousands of pages using it.
+
+        These commands run from the root of a documentation repository and read
+        `docs/` and `mkdocs.yml` relative to the working directory. That is
+        deliberate; do not propose hidden defaults that make them work from
+        elsewhere.
+
+        A checker that cannot run must exit 2 rather than pass. Flag any path
+        where a check returns success without having looked at anything.
+    - path: "src/halos_docs_tools/mkdocs_plugin/**/*.py"
+      instructions: |
+        The `halos-i18n` MkDocs plugin. It depends on MkDocs and
+        `mkdocs-static-i18n` internals on purpose: post-build event priorities,
+        the i18n plugin's nested per-locale builds and its `building` flag, and
+        the position of the template directory in `config.theme.dirs`. Each of
+        those couplings is explained in the module docstrings and in AGENTS.md,
+        so restating them as fragility repeats what the code already says.
+
+        Review the logic instead: locale detection, path arithmetic, the order
+        of the post-build work, and whether a missing or malformed input fails
+        loudly. Everything these templates rest on degrades to omitted output
+        rather than an error, so a silent pass is the failure mode that matters.
+
+        The plugin entry-point name `halos-i18n` is a public interface. Four
+        repositories name it in `mkdocs.yml`.
+    - path: "src/halos_docs_tools/mkdocs_plugin/templates/*.html"
+      instructions: |
+        Jinja templates extending Material for MkDocs, carrying script that runs
+        on a GitHub Pages site with no build step and no transpilation. Do not
+        propose modern JavaScript syntax, modules, or a bundler.
+
+        The redirect rules are deliberate and documented in README.md: only the
+        default edition redirects, a URL fragment suppresses the redirect, a
+        same-origin referrer suppresses it, and query parameters survive it. The
+        Norwegian aliases `no` and `nn` both map to `nb`. Flag a change that
+        breaks one of these; do not propose removing one as redundant.
+
+        Neither template may be renamed to `base.html`, which would recurse.
+    - path: "tests/**/*.py"
+      instructions: |
+        Tests build real things on purpose. `conftest.py` creates an actual git
+        repository because the staleness check reads real git blob hashes, and
+        the plugin fixtures run an actual MkDocs build through Material and
+        `mkdocs-static-i18n`. Mocking either would test the mock. Do not propose
+        replacing them with fakes.
+
+        A test that only asserts a build passes proves nothing about the checks
+        that exist to catch silent regressions. Flag a new check that has no
+        test breaking the output and asserting the failure.
+
+  tools:
+    markdownlint:
+      enabled: false
+    languagetool:
+      enabled: false
+    yamllint:
+      enabled: true
+    actionlint:
+      enabled: true
+    ruff:
+      enabled: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - AGENTS.md
+      - README.md
