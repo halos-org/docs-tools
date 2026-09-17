@@ -65,12 +65,22 @@ them from the source tree, so only the wheel test proves the packaging.
 
 ## Distribution
 
-This repository produces no `.deb`. There is no `VERSION` file, no
-`debian/changelog`, and no APT dispatch — the workspace version-bump policy
-governs `.deb`-producing repositories and does not apply here.
+Releases go through the shared workflows in `halos-org/shared-workflows` with
+`build-deb: false`: no `.deb`, no `debian/changelog`, no APT dispatch, and
+nothing published to a registry. `.github/scripts/generate-release-notes.sh`
+replaces the shared APT install notes with the git pin.
 
-Releases are `pyproject.toml` version plus a `vX.Y.Z` git tag. Consumers pin the
-tag.
+- `pr.yml` runs `pr-checks.yml`. The repo-local actions under
+  `.github/actions/` supply the tests (`run-tests`) and the check that `VERSION`
+  matches `pyproject.toml` (`check-versions`).
+- `main.yml` runs `build-release.yml` on every merge. It creates a
+  `vX.Y.Z+N_pre` pre-release and a draft `vX.Y.Z+N` release.
+- Publishing the draft makes `vX.Y.Z+N` a stable release. Consumers pin that
+  tag.
+
+The workspace version-bump policy applies: bump once per release cycle with
+`./run bumpversion patch|minor|major`, which updates `VERSION` and
+`pyproject.toml` together. Never tag by hand.
 
 ## Development
 

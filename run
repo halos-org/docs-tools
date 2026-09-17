@@ -57,6 +57,35 @@ function install-hooks {
 }
 
 ################################################################################
+# Version Management
+
+function bumpversion {
+  #@ Bump version using bumpversion tool (patch|minor|major)
+  #@ Category: Version
+  local BUMP_TYPE="${1:-}"
+
+  if [[ ! "$BUMP_TYPE" =~ ^(patch|minor|major)$ ]]; then
+    echo "Usage: ./run bumpversion [patch|minor|major]"
+    exit 1
+  fi
+
+  if ! command -v bumpversion &> /dev/null; then
+    echo "Error: bumpversion not installed"
+    echo "Install with: uv tool install bump2version"
+    exit 1
+  fi
+
+  local OLD_VERSION
+  OLD_VERSION=$(cat VERSION)
+  command bumpversion --no-commit "$BUMP_TYPE"
+  # uv.lock records the project's own version, and CI syncs with --locked.
+  uv lock
+  git add VERSION pyproject.toml .bumpversion.cfg uv.lock
+  git commit -m "Bump version: $OLD_VERSION → $(cat VERSION)"
+  echo "New version: $(cat VERSION)"
+}
+
+################################################################################
 # Core
 
 function help {
