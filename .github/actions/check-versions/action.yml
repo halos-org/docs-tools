@@ -1,0 +1,23 @@
+name: 'Check Version Consistency'
+description: 'Verify VERSION file matches the pyproject.toml version'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check version consistency
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        VERSION_FILE=$(tr -d '[:space:]' < VERSION)
+        PYPROJECT_VERSION=$(grep -m1 '^version = "' pyproject.toml | sed 's/version = "\([^"]*\)".*/\1/' || true)
+        echo "VERSION file:    $VERSION_FILE"
+        echo "pyproject.toml:  $PYPROJECT_VERSION"
+
+        if [ -z "$VERSION_FILE" ] || [ "$VERSION_FILE" != "$PYPROJECT_VERSION" ]; then
+          echo "::error::VERSION ($VERSION_FILE) does not match pyproject.toml ($PYPROJECT_VERSION)"
+          echo "Use './run bumpversion [patch|minor|major]' to update versions consistently."
+          exit 1
+        fi
+
+        echo "Version check passed: $VERSION_FILE"
