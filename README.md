@@ -4,8 +4,9 @@ Documentation checkers for HaLOS and Hat Labs MkDocs sites: translation status,
 stamping, anchor validation, glossary and typography checks. Plus `halos-i18n`,
 a MkDocs plugin that makes a multi-edition site behave like one site.
 
-The same code runs in CI and on a laptop. Every check a pull request must pass is
-runnable before you push.
+The same code runs in CI and on a laptop. The lint and test checks that a pull
+request must pass run locally with `./run check`; only the version checks need
+CI.
 
 ## Installing
 
@@ -13,11 +14,12 @@ Add it to a documentation repository's `pyproject.toml`, pinned to a tag:
 
 ```toml
 dependencies = [
-    "halos-docs-tools @ git+https://github.com/halos-org/docs-tools@vX.Y.Z",
+    "halos-docs-tools @ git+https://github.com/halos-org/docs-tools@vX.Y.Z+N",
 ]
 ```
 
-Use a tag from the [releases page](https://github.com/halos-org/docs-tools/releases).
+Use the tag of a stable release, not a `_pre` pre-release, from the
+[releases page](https://github.com/halos-org/docs-tools/releases).
 `uv sync` then puts all six commands on the path and makes the `halos-i18n`
 MkDocs plugin available by name. Each repository pins its own version; upgrading
 is a deliberate edit to that pin.
