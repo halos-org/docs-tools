@@ -125,3 +125,121 @@ def docs_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> DocsRepo:
     repo.translation("fi", "index.md")
     repo.translation("sv", "index.md")
     return repo
+
+
+# A real site build is the only thing that proves the plugin. It has to run the
+# i18n plugin's nested builds, Material's templates and MkDocs' own 404 page,
+# and none of those can be faked usefully.
+
+LOCALE_NAMES = {
+    "en": "English",
+    "fi": "Suomi",
+    "fr": "Français",
+    "de": "Deutsch",
+    "sv": "Svenska",
+    "es": "Español",
+    "it": "Italiano",
+    "nl": "Nederlands",
+    "nb": "Norsk bokmål",
+    "da": "Dansk",
+}
+
+TEN_LOCALES = list(LOCALE_NAMES)
+
+
+@dataclass
+class SiteRepo:
+    """A buildable MkDocs site with one page per locale."""
+
+    root: Path
+    locales: list[str]
+    config: object = None
+
+    def configure(
+        self,
+        *,
+        site_url: str | None = "https://docs.example.invalid/product",
+        plugin: bool | dict = True,
+        custom_dir: str | None = None,
+        pages: tuple[str, ...] = ("index.md", "guide/setup.md"),
+    ) -> None:
+        lines = ["site_name: Test docs"]
+        if site_url is not None:
+            lines.append(f"site_url: {site_url}")
+        lines += ["theme:", "  name: material"]
+        if custom_dir is not None:
+            lines.append(f"  custom_dir: {custom_dir}")
+        lines += ["plugins:", "  - search", "  - i18n:", "      docs_structure: folder"]
+        lines.append("      languages:")
+        for locale in self.locales:
+            lines.append(f"        - locale: {locale}")
+            lines.append(f"          name: {LOCALE_NAMES[locale]}")
+            if locale == self.locales[0]:
+                lines.append("          default: true")
+            lines.append("          build: true")
+        if plugin is True:
+            lines.append("  - halos-i18n")
+        elif isinstance(plugin, dict):
+            lines.append("  - halos-i18n:")
+            lines.append(_indent_yaml(plugin, 6))
+        (self.root / "mkdocs.yml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        for locale in self.locales:
+            for page in pages:
+                stem = page.rsplit("/", 1)[-1].removesuffix(".md")
+                self.write(
+                    f"docs/{locale}/{page}",
+                    f"# {stem} {locale}\n\n## Section {locale}\n\nBody for {locale}.\n",
+                )
+
+    def write(self, relative: str, text: str) -> Path:
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def build(self, *, strict: bool = True) -> Path:
+        """Build the site and return its directory."""
+        from mkdocs.commands.build import build as mkdocs_build
+        from mkdocs.config import load_config
+
+        config = load_config(str(self.root / "mkdocs.yml"), strict=strict)
+        try:
+            mkdocs_build(config)
+        finally:
+            self.config = config
+        return self.root / "site"
+
+    @property
+    def rendered(self) -> list[str]:
+        """The pages MkDocs rendered, as the plugin recorded them."""
+        return sorted(self.config["plugins"]["halos-i18n"]._rendered)
+
+    def page(self, relative: str) -> str:
+        return (self.root / "site" / relative).read_text(encoding="utf-8")
+
+
+def _indent_yaml(mapping: dict, spaces: int) -> str:
+    import yaml
+
+    body = yaml.safe_dump(mapping, allow_unicode=True, sort_keys=False)
+    pad = " " * spaces
+    return "\n".join(pad + line for line in body.rstrip().splitlines())
+
+
+@pytest.fixture
+def site(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SiteRepo:
+    """A ten-locale site, matching halpi2, halmet and sh-rpi."""
+    monkeypatch.chdir(tmp_path)
+    repo = SiteRepo(tmp_path, TEN_LOCALES)
+    repo.configure()
+    return repo
+
+
+@pytest.fixture
+def two_locale_site(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SiteRepo:
+    """A two-locale site, matching sh-esp32."""
+    monkeypatch.chdir(tmp_path)
+    repo = SiteRepo(tmp_path, ["en", "fi"])
+    repo.configure()
+    return repo
