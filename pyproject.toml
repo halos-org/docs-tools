@@ -7,7 +7,7 @@ name = "halos-docs-tools"
 version = "0.3.0"
 description = "Documentation checkers for HaLOS and Hat Labs MkDocs sites"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 license = {text = "MIT"}
 authors = [
     {name = "Hat Labs Oy", email = "info@hatlabs.fi"}
@@ -18,9 +18,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Documentation",
     "Topic :: Software Development :: Quality Assurance",
 ]
@@ -75,7 +73,7 @@ addopts = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [
